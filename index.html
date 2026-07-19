@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geoportal Pedro Moncayo</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #e2e8f0; }
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #334155; padding: 12px 24px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .header h1 { font-size: 18px; font-weight: 600; color: #f8fafc; }
+        .header h1 span { color: #38bdf8; }
+        .header-right { display: flex; align-items: center; gap: 16px; }
+        .header .info { font-size: 11px; color: #94a3b8; }
+        .map-toggle { position: relative; font-size: 12px; color: #94a3b8; }
+        .map-toggle-btn {
+            display: flex; align-items: center; gap: 6px; padding: 5px 12px;
+            background: #334155; border: 1px solid #475569; border-radius: 6px;
+            color: #e2e8f0; font-size: 12px; cursor: pointer; transition: all 0.2s;
+        }
+        .map-toggle-btn:hover { background: #475569; }
+        .map-dropdown {
+            position: absolute; top: 100%; right: 0; margin-top: 4px;
+            background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+            min-width: 170px; z-index: 9999; display: none;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.5); overflow: hidden;
+        }
+        .map-dropdown.show { display: block; }
+        .map-option {
+            padding: 10px 14px; cursor: pointer; display: flex; align-items: center;
+            gap: 10px; font-size: 12px; color: #cbd5e1; transition: all 0.15s;
+        }
+        .map-option:hover { background: #334155; }
+        .map-option.active { background: #1e3a5f; color: #38bdf8; }
+        .map-option .opt-icon { width: 28px; height: 18px; border-radius: 3px; border: 1px solid #475569; }
+        .opt-dark { background: linear-gradient(135deg, #1a1a2e 50%, #16213e 50%); }
+        .opt-color { background: linear-gradient(135deg, #a8e6cf 25%, #ffd3b6 50%, #ff8b94 100%); }
+        .opt-satellite { background: linear-gradient(135deg, #2d5016 30%, #1a3a5c 60%, #4a7c3f 100%); }
+        .opt-terrain { background: linear-gradient(135deg, #e8e4d8 30%, #c9d6a8 60%, #a8c4b8 100%); }
+        .main { display: flex; height: calc(100vh - 52px); }
+        .sidebar {
+            width: 320px; min-width: 320px; background: #1e293b;
+            border-right: 1px solid #334155; display: flex; flex-direction: column;
+        }
+        .sidebar-header { padding: 12px 16px; border-bottom: 1px solid #334155; }
+        .sidebar-header h2 { font-size: 14px; font-weight: 600; color: #f1f5f9; }
+        .layer-list { padding: 8px; flex: 1; overflow-y: auto; }
+        .layer-item {
+            padding: 10px 12px; border-radius: 8px; cursor: pointer;
+            border: 1px solid transparent; transition: all 0.2s; margin-bottom: 4px;
+        }
+        .layer-item:hover { background: #334155; border-color: #475569; }
+        .layer-item.active { background: #1e3a5f; border-color: #38bdf8; }
+        .layer-item .layer-top { display: flex; align-items: center; justify-content: space-between; }
+        .layer-item .name { font-size: 13px; font-weight: 500; color: #f1f5f9; }
+        .layer-item .count { font-size: 11px; color: #64748b; margin-top: 2px; }
+        .layer-item .layer-info { flex: 1; min-width: 0; }
+        .layer-item .badge {
+            display: inline-block; font-size: 10px; padding: 2px 8px;
+            border-radius: 10px; margin-top: 4px; font-weight: 500;
+        }
+        .badge-polygon { background: #0e7490; color: #cffafe; }
+        .badge-point { background: #7c3aed; color: #ede9fe; }
+        .badge-line { background: #c2410c; color: #fff7ed; }
+        .toggle-switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; cursor: pointer; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+        .toggle-slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background: #475569; border-radius: 20px; transition: 0.3s;
+        }
+        .toggle-slider:before {
+            content: ''; position: absolute; height: 14px; width: 14px;
+            left: 3px; bottom: 3px; background: #94a3b8; border-radius: 50%; transition: 0.3s;
+        }
+        .toggle-switch input:checked + .toggle-slider { background: #0ea5e9; }
+        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(16px); background: #fff; }
+        .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .map-container { flex: 1; position: relative; }
+        #map { width: 100%; height: 100%; background: #0f172a; }
+        .table-panel {
+            height: 300px; background: #1e293b; border-top: 1px solid #334155;
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+        .stats-bar {
+            padding: 6px 16px; background: #0f172a; border-bottom: 1px solid #334155;
+            display: flex; gap: 20px; font-size: 11px; flex-wrap: wrap;
+        }
+        .stat { color: #64748b; }
+        .stat strong { color: #38bdf8; font-weight: 600; }
+        .table-header {
+            padding: 8px 16px; border-bottom: 1px solid #334155;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .table-header h3 { font-size: 13px; font-weight: 600; color: #f1f5f9; }
+        .table-controls { display: flex; gap: 8px; align-items: center; }
+        .search-box {
+            background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+            padding: 5px 10px; color: #e2e8f0; font-size: 12px; width: 200px;
+            outline: none; transition: border-color 0.2s;
+        }
+        .search-box:focus { border-color: #38bdf8; }
+        .search-box::placeholder { color: #64748b; }
+        .btn {
+            padding: 5px 10px; border-radius: 6px; border: 1px solid #475569;
+            background: #334155; color: #e2e8f0; font-size: 11px; cursor: pointer;
+            transition: all 0.2s; white-space: nowrap;
+        }
+        .btn:hover { background: #475569; }
+        .table-wrapper { flex: 1; overflow: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        thead { position: sticky; top: 0; z-index: 1; }
+        th {
+            background: #0f172a; color: #94a3b8; font-weight: 600; text-align: left;
+            padding: 8px 10px; border-bottom: 2px solid #334155;
+            white-space: nowrap; cursor: pointer; user-select: none; position: sticky; top: 0;
+        }
+        th:hover { color: #e2e8f0; }
+        th .sort-arrow { margin-left: 3px; font-size: 9px; }
+        td {
+            padding: 6px 10px; border-bottom: 1px solid #1e293b;
+            white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis;
+            color: #cbd5e1;
+        }
+        tr:hover td { background: #334155; }
+        tr.selected td { background: #1e3a5f; }
+        .pagination {
+            padding: 6px 16px; border-top: 1px solid #334155;
+            display: flex; align-items: center; justify-content: space-between;
+            font-size: 11px; color: #64748b;
+        }
+        .pagination .pages { display: flex; gap: 3px; }
+        .pagination .page-btn {
+            width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+            border-radius: 4px; cursor: pointer; transition: all 0.2s;
+            border: 1px solid transparent; color: #94a3b8; font-size: 11px;
+        }
+        .pagination .page-btn:hover { background: #334155; }
+        .pagination .page-btn.active { background: #38bdf8; color: #0f172a; font-weight: 600; }
+        .detail-panel {
+            position: absolute; top: 16px; right: 16px; z-index: 1000;
+            background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+            width: 380px; max-height: 80vh; overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5); display: none;
+        }
+        .detail-panel.show { display: block; }
+        .detail-header {
+            padding: 12px 16px; border-bottom: 1px solid #334155;
+            display: flex; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; background: #1e293b; z-index: 1;
+        }
+        .detail-header h3 { font-size: 13px; font-weight: 600; color: #f1f5f9; }
+        .close-btn {
+            width: 26px; height: 26px; border-radius: 6px; border: none;
+            background: #334155; color: #94a3b8; cursor: pointer; font-size: 14px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .close-btn:hover { background: #ef4444; color: white; }
+        .detail-body { padding: 12px 16px; }
+        .detail-row { display: flex; padding: 6px 0; border-bottom: 1px solid #0f172a; }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-key { width: 140px; font-size: 11px; color: #64748b; font-weight: 500; flex-shrink: 0; }
+        .detail-value { font-size: 11px; color: #e2e8f0; word-break: break-all; }
+        .loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 2000; text-align: center;
+        }
+        .spinner {
+            width: 36px; height: 36px; border: 3px solid #334155;
+            border-top-color: #38bdf8; border-radius: 50%; animation: spin 0.8s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { font-size: 12px; color: #64748b; }
+        .leaflet-container { background: #0f172a !important; }
+        .leaflet-popup-content-wrapper {
+            background: #1e293b; color: #e2e8f0; border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+        .leaflet-popup-tip { background: #1e293b; }
+        .leaflet-popup-content { font-size: 11px; margin: 10px; max-height: 250px; overflow-y: auto; }
+        .leaflet-popup-content b { color: #38bdf8; }
+        .leaflet-popup-content br { margin-bottom: 2px; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><span>&#9673;</span> Geoportal Pedro Moncayo</h1>
+        <div class="header-right">
+            <div class="map-toggle">
+                <button class="map-toggle-btn" onclick="toggleMapDropdown()">
+                    <span id="mapIcon">&#127761;</span>
+                    <span id="mapLabel">Oscuro</span>
+                    <span style="font-size:8px">&#9660;</span>
+                </button>
+                <div class="map-dropdown" id="mapDropdown">
+                    <div class="map-option active" onclick="selectBasemap('dark')" data-key="dark">
+                        <div class="opt-icon opt-dark"></div><span>Oscuro</span>
+                    </div>
+                    <div class="map-option" onclick="selectBasemap('color')" data-key="color">
+                        <div class="opt-icon opt-color"></div><span>Ful Color</span>
+                    </div>
+                    <div class="map-option" onclick="selectBasemap('satellite')" data-key="satellite">
+                        <div class="opt-icon opt-satellite"></div><span>Satelite</span>
+                    </div>
+                    <div class="map-option" onclick="selectBasemap('terrain')" data-key="terrain">
+                        <div class="opt-icon opt-terrain"></div><span>Terreno</span>
+                    </div>
+                </div>
+            </div>
+            <div class="info">PostGIS | Pedro Moncayo, Pichincha</div>
+        </div>
+    </div>
+    <div class="main">
+        <div class="sidebar">
+            <div class="sidebar-header"><h2>Capas</h2></div>
+            <div class="layer-list" id="layerList"></div>
+        </div>
+        <div class="content">
+            <div class="map-container">
+                <div id="map"></div>
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <div class="loading-text" id="loadingText">Cargando datos...</div>
+                </div>
+                <div class="detail-panel" id="detailPanel">
+                    <div class="detail-header">
+                        <h3 id="detailTitle">Detalle</h3>
+                        <button class="close-btn" onclick="closeDetail()">&times;</button>
+                    </div>
+                    <div class="detail-body" id="detailBody"></div>
+                </div>
+            </div>
+            <div class="table-panel">
+                <div class="stats-bar">
+                    <div class="stat">Registros: <strong id="totalRecords">0</strong></div>
+                    <div class="stat">Capa: <strong id="currentLayer">-</strong></div>
+                    <div class="stat">Columnas: <strong id="totalCols">0</strong></div>
+                </div>
+                <div class="table-header">
+                    <h3>Atributos</h3>
+                    <div class="table-controls">
+                        <input type="text" class="search-box" id="searchBox" placeholder="Buscar..." />
+                        <button class="btn" onclick="exportCSV()">CSV</button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table>
+                </div>
+                <div class="pagination">
+                    <span id="pageInfo">0 de 0</span>
+                    <div class="pages" id="pageButtons"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function() {
+        const URL = 'https://qterykzojaeqevpispvo.supabase.co/rest/v1/';
+        const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF0ZXJ5a3pvamFlcWV2cGlzcHZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMzIzOTUsImV4cCI6MjA5NjcwODM5NX0.NbCVdm1o-b-EvUlLWU0Z3Zb744GMfwg6H4YE3taESbs';
+        const HDR = { 'apikey': ANON, 'Authorization': 'Bearer ' + ANON };
+
+        const LAYERS = [
+            { name: 'c_rural2026', label: 'C Rural 2026', type: 'polygon', rpc: true, cols: ['gid','id','area_predi','tipo_predi','utilidad_p','clave_cata','clave_ca_1','forma_de_a','en_conflic','precio_aco','numero_de_','titulo','uso_habita','uso_agrico','uso_agri_1','uso_agri_2','uso_agri_3','uso_precua','uso_prec_1','uso_prec_2','uso_prec_3','uso_prec_4','uso_pecuar','uso_forest','uso_fore_1','uso_fore_2','uso_bioacu','uso_bioa_1','uso_conser','uso_cons_1','uso_cons_2','uso_otros_','uso_otro_1','uso_otro_2','uso_otro_3','uso_otro_4','uso_social','uso_soci_1','uso_soci_2','uso_soci_3','uso_soci_4','uso_soci_5','uso_soci_6','uso_sin_us','uso_sin__1','predios_ot','predios__1','cobertura_','servicios_','servicios1','servicio_1','servicio_2','servicio_3','servicio_4','servicio_5','servicio_6','servicio_7','servicio_8','servicio_9','metodos_ri','metodos__1','metodos__2','metodos__3','metodos__4','disponibil','clave_nuev','clave_ante','propietari','nombre_pre','parroquia','sector','superficie','superfic_1','avaluo_ter','avaluo_con','avaluo_mej','avaluo_tot'] },
+            { name: 'poligonos_p_m_f', label: 'Poligonos P-M-F', type: 'polygon' },
+            { name: 'canton_pedro_moncayo', label: 'Canton Pedro Moncayo', type: 'polygon' },
+            { name: 'rios_p_m_1', label: 'Rios P-M', type: 'line' },
+            { name: 'vias_p_m', label: 'Vias P-M', type: 'line' }
+        ];
+
+        const COLORS = ['#38bdf8','#34d399','#f472b6','#fbbf24','#a78bfa'];
+        const FILLS  = ['#38bdf825','#34d39925','#f472b625','#fbbf2425','#a78bfa25'];
+
+        let map = L.map('map', { center: [0.02, -78.2], zoom: 13, zoomControl: true });
+        const BASEMAPS = {
+            dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: 'CARTO', maxZoom: 19 }),
+            color: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: 'OSM', maxZoom: 19 }),
+            satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 19 }),
+            terrain: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution: 'CARTO', maxZoom: 19 })
+        };
+        const BINFO = { dark: ['&#127761;','Oscuro'], color: ['&#127758;','Ful Color'], satellite: ['&#128752;','Satelite'], terrain: ['&#9968;','Terreno'] };
+        let curBase = BASEMAPS.dark; curBase.addTo(map);
+
+        window.selectBasemap = function(k) {
+            map.removeLayer(curBase); curBase = BASEMAPS[k]; curBase.addTo(map);
+            document.getElementById('mapIcon').innerHTML = BINFO[k][0];
+            document.getElementById('mapLabel').textContent = BINFO[k][1];
+            document.querySelectorAll('.map-option').forEach(o => o.classList.toggle('active', o.dataset.key === k));
+            document.getElementById('mapDropdown').classList.remove('show');
+        };
+        window.toggleMapDropdown = function() { document.getElementById('mapDropdown').classList.toggle('show'); };
+        document.addEventListener('click', e => { if (!e.target.closest('.map-toggle')) document.getElementById('mapDropdown').classList.remove('show'); });
+
+        const layerData = {};
+        const layerGroups = {};
+        const layerVisible = {};
+        let selectedLayer = null;
+        let allData = [], filtered = [], cols = [], geomKey = null;
+        let sortCol = null, sortAsc = true, page = 1;
+        const PS = 50;
+
+        function hdr() { return HDR; }
+
+        async function fetchCount(name, layer) {
+            try {
+                if (layer.rpc) {
+                    const r = await fetch(URL + 'rpc/get_c_rural2026_count', { method: 'POST', headers: { ...HDR, 'Content-Type': 'application/json' }, body: '{}' });
+                    const data = await r.json();
+                    return typeof data === 'number' ? data : 0;
+                }
+                const r = await fetch(URL + name + '?select=gid&limit=1', { headers: { ...HDR, 'Prefer': 'count=exact' } });
+                const cr = r.headers.get('Content-Range');
+                if (cr) return parseInt(cr.split('/')[1]) || 0;
+            } catch(e) {}
+            return 0;
+        }
+
+        async function fetchAll(name, count, layer) {
+            const limit = Math.min(count, 30000);
+            const batchSize = 5000;
+            let data = [];
+            for (let offset = 0; offset < limit; offset += batchSize) {
+                document.getElementById('loadingText').textContent = 'Cargando ' + name + '... ' + Math.min(offset + batchSize, count) + '/' + count;
+                try {
+                    let r;
+                    if (layer.rpc) {
+                        r = await fetch(URL + 'rpc/get_c_rural2026', {
+                            method: 'POST', headers: { ...HDR, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ p_limit: batchSize, p_offset: offset })
+                        });
+                    } else {
+                        const selectCols = layer.cols ? layer.cols.join(',') + ',geom' : '*';
+                        r = await fetch(URL + name + '?select=' + encodeURIComponent(selectCols) + '&limit=' + batchSize + '&offset=' + offset + '&order=gid', { headers: HDR });
+                    }
+                    if (!r.ok) break;
+                    const batch = await r.json();
+                    data = data.concat(batch);
+                    if (batch.length < batchSize) break;
+                } catch(e) { break; }
+            }
+            return data;
+        }
+
+        async function loadLayerData(layer) {
+            if (layerData[layer.name]) return layerData[layer.name];
+            document.getElementById('loading').style.display = 'block';
+            const count = await fetchCount(layer.name, layer);
+            if (count === 0) { document.getElementById('loading').style.display = 'none'; return null; }
+            const data = await fetchAll(layer.name, count, layer);
+            layerData[layer.name] = data;
+            document.getElementById('loading').style.display = 'none';
+            return data;
+        }
+
+        function renderAllLayers() {
+            Object.keys(layerGroups).forEach(k => { if (layerGroups[k]) map.removeLayer(layerGroups[k]); });
+            Object.keys(layerGroups).forEach(k => { layerGroups[k] = null; });
+
+            LAYERS.forEach((l, i) => {
+                if (!layerVisible[l.name]) return;
+                const data = layerData[l.name];
+                if (!data || data.length === 0) return;
+
+                const fg = L.layerGroup().addTo(map);
+                layerGroups[l.name] = fg;
+                const color = COLORS[i % COLORS.length];
+                const fill = FILLS[i % FILLS.length];
+                const isLine = l.type === 'line';
+
+                let gk = null, cs = [];
+                if (data.length > 0) {
+                    for (const k of Object.keys(data[0])) {
+                        const v = data[0][k];
+                        if (v && typeof v === 'object' && (v.type || v.crs || v.coordinates)) gk = k;
+                        else cs.push(k);
+                    }
+                }
+
+                data.forEach(row => {
+                    const g = row[gk];
+                    if (!g) return;
+                    const props = {};
+                    cs.forEach(c => props[c] = row[c]);
+                    props._layer = l.label;
+
+                    const feature = L.geoJSON({ type: 'Feature', geometry: g, properties: props }, {
+                        style: () => ({ color, weight: isLine ? 3 : 2, fillColor: fill, fillOpacity: isLine ? 0 : 0.4 }),
+                        onEachFeature: (f, lay) => {
+                            let html = '<div style="max-height:220px;overflow:auto"><b style="color:' + color + '">' + l.label + '</b><br>';
+                            const show = ['nombre_pre','parroquia','sector','propietari','superficie','tipo_predi','avaluo_tot','clave_cata'];
+                            show.forEach(k => { if (f.properties[k] != null) html += '<b>' + k + ':</b> ' + String(f.properties[k]).substring(0,120) + '<br>'; });
+                            html += '<span style="color:#64748b;font-size:10px">Click para ver todos los atributos</span></div>';
+                            lay.bindPopup(html, { maxWidth: 320 });
+                            lay.on('click', () => { selectLayerTable(l); showDetail(f.properties); });
+                        }
+                    });
+                    fg.addLayer(feature);
+                });
+            });
+        }
+
+        function selectLayerTable(layer) {
+            selectedLayer = layer;
+            const data = layerData[layer.name];
+            if (!data) return;
+
+            allData = data;
+            cols = []; geomKey = null;
+            if (allData.length > 0) {
+                for (const k of Object.keys(allData[0])) {
+                    const v = allData[0][k];
+                    if (v && typeof v === 'object' && (v.type || v.crs || v.coordinates)) geomKey = k;
+                    else cols.push(k);
+                }
+            }
+            sortCol = null; sortAsc = true; page = 1; filtered = [...allData];
+            document.getElementById('totalRecords').textContent = allData.length;
+            document.getElementById('currentLayer').textContent = layer.label;
+            document.getElementById('totalCols').textContent = cols.length;
+            renderTable();
+            renderPagination();
+
+            document.querySelectorAll('.layer-item').forEach(x => x.classList.remove('active'));
+            const items = document.querySelectorAll('.layer-item');
+            const idx = LAYERS.findIndex(l => l.name === layer.name);
+            if (items[idx]) items[idx].classList.add('active');
+        }
+
+        function showDetail(p) {
+            const panel = document.getElementById('detailPanel');
+            const body = document.getElementById('detailBody');
+            const title = document.getElementById('detailTitle');
+            title.textContent = p.nombre_pre || p.provincia || p._layer || 'Detalle';
+            body.innerHTML = '';
+            for (const [k, v] of Object.entries(p)) {
+                if (v == null || k === 'geom' || k === '_layer') continue;
+                const row = document.createElement('div');
+                row.className = 'detail-row';
+                row.innerHTML = '<div class="detail-key">' + k + '</div><div class="detail-value">' + (typeof v === 'object' ? JSON.stringify(v) : v) + '</div>';
+                body.appendChild(row);
+            }
+            panel.classList.add('show');
+        }
+        window.closeDetail = function() { document.getElementById('detailPanel').classList.remove('show'); };
+
+        function renderTable() {
+            const thead = document.getElementById('tableHead');
+            const tbody = document.getElementById('tableBody');
+            thead.innerHTML = '';
+            const tr = document.createElement('tr');
+            cols.forEach(c => {
+                const th = document.createElement('th');
+                const arrow = sortCol === c ? (sortAsc ? ' &#9650;' : ' &#9660;') : '';
+                th.innerHTML = c + '<span class="sort-arrow">' + arrow + '</span>';
+                th.onclick = () => { if (sortCol === c) sortAsc = !sortAsc; else { sortCol = c; sortAsc = true; } sortData(); page = 1; renderTable(); renderPagination(); };
+                tr.appendChild(th);
+            });
+            thead.appendChild(tr);
+            tbody.innerHTML = '';
+            const start = (page - 1) * PS;
+            filtered.slice(start, start + PS).forEach(row => {
+                const tr = document.createElement('tr');
+                tr.onclick = () => { document.querySelectorAll('#tableBody tr').forEach(r => r.classList.remove('selected')); tr.classList.add('selected'); showDetail(row); };
+                cols.forEach(c => {
+                    const td = document.createElement('td');
+                    const v = row[c];
+                    if (v == null) { td.textContent = '-'; td.style.color = '#475569'; }
+                    else if (typeof v === 'object') td.textContent = JSON.stringify(v).substring(0,60) + '...';
+                    else td.textContent = String(v);
+                    td.title = v != null ? String(v) : '';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
+        function sortData() {
+            if (!sortCol) return;
+            filtered.sort((a, b) => {
+                let va = a[sortCol], vb = b[sortCol];
+                if (va == null) return 1; if (vb == null) return -1;
+                if (typeof va === 'number' && typeof vb === 'number') return sortAsc ? va - vb : vb - va;
+                return sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+            });
+        }
+
+        function renderPagination() {
+            const tp = Math.ceil(filtered.length / PS);
+            document.getElementById('pageInfo').textContent = ((page-1)*PS+1) + '-' + Math.min(page*PS, filtered.length) + ' de ' + filtered.length;
+            const c = document.getElementById('pageButtons');
+            c.innerHTML = '';
+            const add = (t, p, a) => { const d = document.createElement('div'); d.className = 'page-btn' + (a ? ' active' : ''); d.textContent = t; d.onclick = () => { page = p; renderTable(); renderPagination(); }; c.appendChild(d); };
+            if (page > 1) add('&#9664;', page-1);
+            for (let i = Math.max(1, page-2); i <= Math.min(tp, page+2); i++) add(i, i, i === page);
+            if (page < tp) add('&#9654;', page+1);
+        }
+
+        document.getElementById('searchBox').addEventListener('input', function(e) {
+            const q = e.target.value.toLowerCase();
+            filtered = q ? allData.filter(r => cols.some(c => r[c] != null && String(r[c]).toLowerCase().includes(q))) : [...allData];
+            page = 1; renderTable(); renderPagination();
+        });
+
+        window.exportCSV = function() {
+            if (!filtered.length) return;
+            const h = cols.join(',');
+            const rows = filtered.map(r => cols.map(c => { const v = r[c]; if (v == null) return ''; const s = String(v); return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g,'""') + '"' : s; }).join(','));
+            const csv = [h, ...rows].join('\n');
+            const b = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = selectedLayer ? selectedLayer.name + '.csv' : 'data.csv'; a.click();
+        };
+
+        async function init() {
+            const list = document.getElementById('layerList');
+            for (let i = 0; i < LAYERS.length; i++) {
+                const l = LAYERS[i];
+                const bc = l.type === 'polygon' ? 'badge-polygon' : l.type === 'point' ? 'badge-point' : 'badge-line';
+                const div = document.createElement('div');
+                div.className = 'layer-item';
+                div.innerHTML = '<div class="layer-top"><div class="layer-info"><div class="name">' + l.label + '</div><div class="count">' + l.name + ' <span class="badge ' + bc + '">' + l.type + '</span></div></div>' +
+                    '<label class="toggle-switch" onclick="event.stopPropagation()"><input type="checkbox" data-layer="' + l.name + '"><span class="toggle-slider"></span></label></div>';
+
+                const checkbox = div.querySelector('input[type="checkbox"]');
+                checkbox.addEventListener('change', async function() {
+                    layerVisible[l.name] = this.checked;
+                    if (this.checked && !layerData[l.name]) {
+                        document.getElementById('loading').style.display = 'block';
+                        document.getElementById('loadingText').textContent = 'Cargando ' + l.label + '...';
+                        await loadLayerData(l);
+                    }
+                    renderAllLayers();
+                    if (this.checked && !selectedLayer) selectLayerTable(l);
+                });
+
+                div.onclick = () => { if (layerData[l.name]) selectLayerTable(l); };
+                list.appendChild(div);
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('loadingText').textContent = 'Cargando capas iniciales...';
+
+            for (let i = 0; i < LAYERS.length; i++) {
+                const l = LAYERS[i];
+                document.getElementById('loadingText').textContent = 'Cargando ' + l.label + '...';
+                await loadLayerData(l);
+                layerVisible[l.name] = true;
+                const cb = document.querySelector('input[data-layer="' + l.name + '"]');
+                if (cb) cb.checked = true;
+            }
+            renderAllLayers();
+            selectLayerTable(LAYERS[0]);
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        init();
+    })();
+    </script>
+</body>
+</html>
